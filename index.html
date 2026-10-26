@@ -1,0 +1,571 @@
+<title>Make-Ready Board</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: sticky header + summary strip, then a 5-column Mon–Fri board (stacks on phones); Units and Crew as list views. */
+:root {
+  --bg: #eef2f1; --surface: #ffffff; --surface-2: #f6f8f7; --ink: #16201e; --muted: #56655f; --line: #d3ddd9;
+  --accent: #b9480f; --accent-ink: #ffffff; --focus: #1f6feb;
+  --t-turnover: #6b5a45; --t-paint: #2f62b8; --t-reglaze: #0f8a86; --t-carpet_replace: #7d4aa8; --t-carpet_clean: #3f8a2e; --t-inspection: #b07a00;
+  --ok: #2e7d32; --warn: #a86400; --bad: #c62828; --info: #2f62b8;
+  --display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0e1413; --surface: #162020; --surface-2: #1b2726; --ink: #e4ece9; --muted: #95a6a0; --line: #2b3a37;
+  --accent: #f08a4b; --accent-ink: #1a0d05; --focus: #79a8ff;
+  --t-turnover: #b49c7c; --t-paint: #6f9bec; --t-reglaze: #3cc2bc; --t-carpet_replace: #b78ae0; --t-carpet_clean: #79c766; --t-inspection: #e3b23c;
+  --ok: #6cc070; --warn: #e3a33c; --bad: #ff7a7a; --info: #6f9bec; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0e1413; --surface: #162020; --surface-2: #1b2726; --ink: #e4ece9; --muted: #95a6a0; --line: #2b3a37;
+  --accent: #f08a4b; --accent-ink: #1a0d05; --focus: #79a8ff;
+  --t-turnover: #b49c7c; --t-paint: #6f9bec; --t-reglaze: #3cc2bc; --t-carpet_replace: #b78ae0; --t-carpet_clean: #79c766; --t-inspection: #e3b23c;
+  --ok: #6cc070; --warn: #e3a33c; --bad: #ff7a7a; --info: #6f9bec; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 var(--body); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
+.wrap { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); max-width: 1280px; margin: 0 auto; }
+header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line); }
+header.top .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding-block: 10px; }
+h1 { font: 700 26px/1 var(--display); letter-spacing: .02em; margin: 0; text-transform: uppercase; }
+h1 small { display: block; font: 500 12px/1.3 var(--body); letter-spacing: 0; text-transform: none; color: var(--muted); margin-top: 3px; }
+h2 { font: 700 20px/1.1 var(--display); text-transform: uppercase; letter-spacing: .03em; margin: 0; text-wrap: balance; }
+.tabs { display: flex; gap: 4px; margin-left: auto; }
+.tab { border: 1px solid var(--line); background: var(--surface-2); color: var(--ink); padding: 7px 12px; border-radius: 6px; font: 600 13px var(--body); cursor: pointer; }
+.tab[aria-selected="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+button, .btn { font: 600 13px var(--body); cursor: pointer; border-radius: 6px; padding: 8px 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+button:hover, .btn:hover { border-color: var(--muted); }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.danger { color: var(--bad); }
+button:focus-visible, .tab:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, .job:focus-visible, .btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+main { padding-block: 16px 48px; display: grid; gap: 16px; }
+
+.strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+.stat b { display: block; font: 700 28px/1 var(--display); font-variant-numeric: tabular-nums; }
+.stat span { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+.stat.alert b { color: var(--bad); }
+.stat.warnc b { color: var(--warn); }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.toolbar .grow { flex: 1; }
+.toolbar label { color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 6px; }
+.hours { color: var(--muted); font-size: 12px; }
+
+.week { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.day { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; min-height: 160px; display: flex; flex-direction: column; min-width: 0; }
+.day.today { border-color: var(--accent); box-shadow: inset 0 3px 0 var(--accent); }
+.day header { padding: 8px 10px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: baseline; }
+.day header b { font: 700 16px var(--display); text-transform: uppercase; letter-spacing: .04em; }
+.day header span { font: 500 12px var(--mono); color: var(--muted); }
+.day .list { padding: 8px; display: grid; gap: 6px; align-content: start; }
+.empty { color: var(--muted); font-size: 12px; padding: 6px 2px; }
+.job { text-align: left; width: 100%; display: grid; gap: 2px; padding: 7px 8px 7px 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); position: relative; cursor: pointer; color: var(--ink); font: inherit; }
+.job::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; border-radius: 6px 0 0 6px; background: var(--tc); }
+.job .row1 { display: flex; justify-content: space-between; gap: 6px; align-items: baseline; }
+.job .unit { font: 500 13px var(--mono); }
+.job .trade { font-weight: 600; font-size: 12px; color: var(--tc); }
+.job .meta { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.job.done { opacity: .6; }
+.job.done .unit { text-decoration: line-through; }
+
+.pill { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.s-scheduled { color: var(--muted); } .s-in_progress { color: var(--info); } .s-done { color: var(--ok); } .s-issue { color: var(--bad); }
+.late { color: var(--bad); font-weight: 600; } .ontime { color: var(--ok); }
+
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 10px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: grid; gap: 8px; min-width: 0; }
+.card .head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.card .uno { font: 700 22px var(--display); letter-spacing: .02em; }
+.card .sub { color: var(--muted); font-size: 12px; }
+.pipe { display: grid; gap: 4px; }
+.pipe .st { display: grid; grid-template-columns: 10px 1fr auto; gap: 8px; align-items: center; font-size: 12.5px; }
+.pipe .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--tc); }
+.pipe .st.done span:nth-child(2) { color: var(--muted); text-decoration: line-through; }
+.pipe .when { font: 500 11.5px var(--mono); color: var(--muted); white-space: nowrap; }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.overlay { position: fixed; inset: 0; background: color-mix(in srgb, var(--ink) 45%, transparent); z-index: 20; display: grid; place-items: start center; overflow-y: auto; padding: max(24px, env(safe-area-inset-top, 0px)) max(12px, env(safe-area-inset-right, 0px)) max(24px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left, 0px)); }
+.modal { background: var(--surface); color: var(--ink); border-radius: 10px; border: 1px solid var(--line); width: min(760px, 100%); padding: 16px; display: grid; gap: 14px; }
+.modal.narrow { width: min(460px, 100%); }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.field { display: grid; gap: 4px; min-width: 0; }
+.field > span { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+input, select, textarea { font: 14px var(--body); padding: 7px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); color: var(--ink); width: 100%; min-width: 0; }
+textarea { min-height: 70px; resize: vertical; }
+fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 0; display: flex; flex-wrap: wrap; gap: 8px 16px; }
+legend { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; padding: 0 4px; }
+fieldset label { display: flex; gap: 6px; align-items: center; }
+fieldset input { width: auto; }
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; min-width: 640px; }
+th, td { padding: 6px 8px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
+th { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); background: var(--surface-2); }
+td input[type="number"] { width: 64px; }
+td.ends { font: 500 12px var(--mono); white-space: nowrap; }
+.foot { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; align-items: center; }
+.note { font-size: 12px; color: var(--muted); }
+.confirm { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--bad); font-weight: 600; }
+.msgbox { font: 13px/1.5 var(--mono); min-height: 170px; }
+.contact { font: 500 13px var(--mono); user-select: all; }
+.banner { background: var(--surface); border: 1px dashed var(--line); border-radius: 8px; padding: 10px 12px; color: var(--muted); font-size: 13px; }
+.toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); background: var(--ink); color: var(--bg); padding: 9px 14px; border-radius: 8px; font-weight: 600; z-index: 30; max-width: calc(100% - 32px); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; background: var(--tc); margin-right: 5px; vertical-align: -1px; }
+
+@media (max-width: 900px) { .week { grid-template-columns: 1fr; } .day { min-height: 0; } .strip { grid-template-columns: repeat(2, minmax(0, 1fr)); } .tabs { margin-left: 0; width: 100%; } .tab { flex: 1; } }
+@media (prefers-reduced-motion: no-preference) { .job, button, .tab { transition: border-color .15s, background-color .15s; } }
+</style>
+
+<header class="top"><div class="wrap">
+  <h1>Make-Ready Board<small>Turnovers · Mon–Fri, 8:00 AM–5:00 PM</small></h1>
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tab-week" data-view="week">This week</button>
+    <button class="tab" role="tab" id="tab-units" data-view="units">Units</button>
+    <button class="tab" role="tab" id="tab-crew" data-view="crew">Crew &amp; vendors</button>
+  </nav>
+</div></header>
+
+<main class="wrap" id="app">
+  <section class="strip" id="strip" aria-label="Summary"></section>
+  <div id="banner" class="banner" hidden></div>
+  <section id="view-week" hidden>
+    <div class="toolbar" style="margin-bottom:10px">
+      <button id="prev-week" aria-label="Previous week">‹ Prev</button>
+      <button id="this-week">This week</button>
+      <button id="next-week" aria-label="Next week">Next ›</button>
+      <h2 id="week-label" class="grow"></h2>
+      <label for="crew-filter">Show <select id="crew-filter"></select></label>
+      <button class="primary" data-act="new-unit">+ New turnover</button>
+    </div>
+    <div class="week" id="week"></div>
+    <div class="legend" id="legend" style="margin-top:10px"></div>
+  </section>
+  <section id="view-units" hidden>
+    <div class="toolbar" style="margin-bottom:10px">
+      <h2 class="grow">Turnovers</h2>
+      <label for="show-archived"><input type="checkbox" id="show-archived" style="width:auto"> Show archived</label>
+      <button class="primary" data-act="new-unit">+ New turnover</button>
+    </div>
+    <div class="cards" id="units"></div>
+  </section>
+  <section id="view-crew" hidden>
+    <div class="toolbar" style="margin-bottom:10px">
+      <h2 class="grow">Crew &amp; vendors</h2>
+      <button class="primary" id="new-crew">+ Add crew or vendor</button>
+    </div>
+    <div class="cards" id="crew"></div>
+  </section>
+</main>
+<div id="overlay" class="overlay" hidden></div>
+<div id="toast" class="toast" hidden role="status"></div>
+
+<script>
+(() => {
+  const TRADES = {
+    turnover:       { label: "Turnover / repairs", days: () => 1 },
+    paint:          { label: "Paint",              days: b => (b >= 2 ? 2 : 1) },
+    reglaze:        { label: "Tub reglaze",        days: () => 1 },
+    carpet_replace: { label: "Carpet replacement", days: () => 1 },
+    carpet_clean:   { label: "Carpet cleaning",    days: () => 1 },
+    inspection:     { label: "Final inspection",   days: () => 1 },
+  };
+  const ORDER = Object.keys(TRADES);
+  const STATUS = { scheduled: "Scheduled", in_progress: "In progress", done: "Done", issue: "Issue" };
+  const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  // ---- dates (YYYY-MM-DD strings, local time, business days Mon–Fri) ----
+  const pad = n => String(n).padStart(2, "0");
+  const fmt = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const parse = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+  const isBiz = d => d.getDay() !== 0 && d.getDay() !== 6;
+  const nextBiz = s => { const d = parse(s); while (!isBiz(d)) d.setDate(d.getDate() + 1); return fmt(d); };
+  const addBiz = (s, n) => { const d = parse(s); while (n > 0) { d.setDate(d.getDate() + 1); if (isBiz(d)) n--; } return fmt(d); };
+  const endOf = st => addBiz(nextBiz(st.start), Math.max(1, st.days) - 1);
+  const today = () => fmt(new Date());
+  const mondayOf = s => { const d = parse(s); const off = (d.getDay() + 6) % 7; d.setDate(d.getDate() - off); return fmt(d); };
+  const short = s => { if (!s) return "—"; const d = parse(s); return `${DOW[d.getDay()]} ${d.getMonth() + 1}/${d.getDate()}`; };
+  const bizIndex = (start, day) => { let i = 1, s = nextBiz(start); while (s < day) { s = addBiz(s, 1); i++; } return i; };
+
+  // Put each step on the next business day after the previous one ends.
+  function schedule(steps, from) {
+    let cur = nextBiz(from);
+    for (const st of steps) { st.start = cur; cur = addBiz(endOf(st), 1); }
+  }
+  // After a manual change at index i, push later steps forward so nothing overlaps.
+  function reflow(steps, i) {
+    for (let k = i + 1; k < steps.length; k++) {
+      const earliest = addBiz(endOf(steps[k - 1]), 1);
+      if (!steps[k].start || steps[k].start < earliest) steps[k].start = earliest;
+    }
+  }
+
+  // ---- state + storage (shared db when available, else this device) ----
+  const state = { units: [], crew: [], view: "week", week: mondayOf(today()), crewFilter: "", showArchived: false, ready: false };
+  let db = null, canWrite = true;
+  const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+  const local = {
+    get(k) { try { return JSON.parse(localStorage.getItem("mrb-" + k) || "null"); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem("mrb-" + k, JSON.stringify(v)); } catch {} },
+  };
+  async function put(coll, obj) {
+    const { id, ...body } = obj;
+    if (db) {
+      try { await db.collection(coll).doc(id).set(body); }
+      catch (e) { toast(e && e.code === "invalid_argument" ? "You have view-only access to this board." : "Couldn't save. Check your connection and try again."); throw e; }
+    } else {
+      const list = state[coll].filter(x => x.id !== id); list.push(obj); state[coll] = list; local.set(coll, list); render();
+    }
+  }
+  async function remove(coll, id) {
+    if (db) { try { await db.collection(coll).doc(id).delete(); } catch (e) { toast("Couldn't delete. Try again."); throw e; } }
+    else { state[coll] = state[coll].filter(x => x.id !== id); local.set(coll, state[coll]); render(); }
+  }
+  function useLocal(reason) {
+    state.units = local.get("units") || [];
+    state.crew = local.get("crew") || [];
+    state.ready = true;
+    if (reason) { banner.textContent = reason; banner.hidden = false; }
+    render();
+  }
+  async function boot() {
+    const c = window.claude;
+    if (!c || !c.use) { useLocal("Saving on this device only."); return; }
+    db = await c.use("db");
+    if (!db) { useLocal("Sign in to see the shared board. Changes you make now stay on this device."); return; }
+    const user = await c.use("user");
+    if (user && user.can) { try { const w = await user.can("data.write"); if (w === false) canWrite = false; } catch {} }
+    let seen = 0;
+    const done = () => { if (++seen >= 2) { state.ready = true; } render(); };
+    for (const coll of ["units", "crew"]) {
+      let first = true;
+      db.collection(coll).onSnapshot(
+        snap => { state[coll] = snap.docs.map(d => ({ id: d.id, ...d.data() })); if (first) { first = false; done(); } else render(); },
+        () => { banner.textContent = "Lost connection to the shared board. Reload the page to reconnect."; banner.hidden = false; }
+      );
+    }
+  }
+
+  // ---- helpers ----
+  const $ = id => document.getElementById(id);
+  const banner = $("banner");
+  const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const crewById = id => state.crew.find(c => c.id === id);
+  const crewName = id => (crewById(id) || {}).name || "Unassigned";
+  const projected = u => (u.steps.length ? endOf(u.steps[u.steps.length - 1]) : null);
+  const isLate = u => u.readyBy && projected(u) && projected(u) > u.readyBy && !unitDone(u);
+  const unitDone = u => u.steps.length && u.steps.every(s => s.status === "done");
+  function unitStatus(u) {
+    if (unitDone(u)) return ["done", "Ready to rent"];
+    if (u.steps.some(s => s.status === "issue")) return ["issue", "Has an issue"];
+    if (u.steps.some(s => s.status === "in_progress" || s.status === "done")) return ["in_progress", "In progress"];
+    return ["scheduled", "Scheduled"];
+  }
+  function jobsOn(day) {
+    const out = [];
+    for (const u of state.units) {
+      if (u.archived) continue;
+      u.steps.forEach((s, i) => {
+        if (!s.start) return;
+        const st = nextBiz(s.start), en = endOf(s);
+        if (day >= st && day <= en && (!state.crewFilter || s.crewId === state.crewFilter)) out.push({ u, s, i, n: bizIndex(s.start, day) });
+      });
+    }
+    return out.sort((a, b) => ORDER.indexOf(a.s.trade) - ORDER.indexOf(b.s.trade) || a.u.unit.localeCompare(b.u.unit, undefined, { numeric: true }));
+  }
+  let toastT;
+  function toast(msg) { const t = $("toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => (t.hidden = true), 2600); }
+
+  // ---- render ----
+  function render() {
+    for (const v of ["week", "units", "crew"]) { $("view-" + v).hidden = state.view !== v; $("tab-" + v).setAttribute("aria-selected", state.view === v); }
+    document.querySelectorAll('[data-act="new-unit"], #new-crew').forEach(b => (b.hidden = !canWrite));
+    renderStrip();
+    if (state.view === "week") renderWeek();
+    if (state.view === "units") renderUnits();
+    if (state.view === "crew") renderCrew();
+  }
+  function renderStrip() {
+    const active = state.units.filter(u => !u.archived && !unitDone(u));
+    const t = today();
+    const todays = isBiz(parse(t)) ? jobsOn(t).length : 0;
+    const issues = state.units.filter(u => !u.archived).reduce((n, u) => n + u.steps.filter(s => s.status === "issue").length, 0);
+    const late = active.filter(isLate).length;
+    $("strip").innerHTML = `
+      <div class="stat"><b>${active.length}</b><span>Turnovers open</span></div>
+      <div class="stat"><b>${todays}</b><span>Jobs today${state.crewFilter ? " (filtered)" : ""}</span></div>
+      <div class="stat ${issues ? "alert" : ""}"><b>${issues}</b><span>Issues flagged</span></div>
+      <div class="stat ${late ? "warnc" : ""}"><b>${late}</b><span>Behind ready-by date</span></div>`;
+  }
+  function renderWeek() {
+    const sel = $("crew-filter");
+    const opts = [`<option value="">All crews</option>`].concat(
+      [...state.crew].sort((a, b) => ORDER.indexOf(a.trade) - ORDER.indexOf(b.trade)).map(c => `<option value="${esc(c.id)}">${esc(c.name)} · ${esc(TRADES[c.trade]?.label || "")}</option>`));
+    sel.innerHTML = opts.join("");
+    sel.value = state.crewFilter;
+    const end = addBiz(state.week, 4);
+    $("week-label").textContent = `Week of ${short(state.week)} – ${short(end)}`;
+    const t = today();
+    let html = "";
+    for (let i = 0, d = state.week; i < 5; i++, d = addBiz(d, 1)) {
+      const jobs = jobsOn(d);
+      html += `<div class="day ${d === t ? "today" : ""}"><header><b>${DOW[parse(d).getDay()]}${d === t ? " · Today" : ""}</b><span>${parse(d).getMonth() + 1}/${parse(d).getDate()}</span></header><div class="list">`;
+      html += jobs.length ? jobs.map(({ u, s, i, n }) => `
+        <button class="job ${s.status === "done" ? "done" : ""}" style="--tc: var(--t-${s.trade})" data-act="step" data-unit="${esc(u.id)}" data-i="${i}">
+          <span class="row1"><span class="unit">Unit ${esc(u.unit)}</span><span class="pill s-${s.status}">${STATUS[s.status]}</span></span>
+          <span class="trade">${esc(TRADES[s.trade].label)}${s.days > 1 ? ` · day ${n} of ${s.days}` : ""}</span>
+          <span class="meta">${esc(crewName(s.crewId))}${s.note ? " · " + esc(s.note) : ""}</span>
+        </button>`).join("") : `<div class="empty">${state.ready ? "Nothing scheduled" : "Loading…"}</div>`;
+      html += `</div></div>`;
+    }
+    $("week").innerHTML = html;
+    $("legend").innerHTML = ORDER.map(k => `<span style="--tc: var(--t-${k})"><i></i>${TRADES[k].label}</span>`).join("");
+  }
+  function renderUnits() {
+    $("show-archived").checked = state.showArchived;
+    const list = state.units.filter(u => state.showArchived || !u.archived)
+      .sort((a, b) => (a.archived - b.archived) || (a.readyBy || "9").localeCompare(b.readyBy || "9"));
+    if (!list.length) {
+      $("units").innerHTML = `<div class="banner">${state.ready ? "No turnovers yet. Tap <b>+ New turnover</b> when a unit is vacated and the board schedules each trade in order for you." : "Loading…"}</div>`;
+      return;
+    }
+    $("units").innerHTML = list.map(u => {
+      const [sk, sl] = unitStatus(u);
+      const p = projected(u);
+      return `<article class="card">
+        <div class="head"><span class="uno">Unit ${esc(u.unit)}</span><span class="pill s-${sk}">${u.archived ? "Archived" : sl}</span></div>
+        <div class="sub">${esc(u.building || "")}${u.building ? " · " : ""}${u.bedrooms === 0 ? "Studio" : esc(u.bedrooms) + " bed"} · Move-out ${short(u.moveOut)}</div>
+        <div class="sub">Ready by <b>${short(u.readyBy)}</b> · On track for <b class="${isLate(u) ? "late" : "ontime"}">${short(p)}</b>${isLate(u) ? " (late)" : ""}</div>
+        <div class="pipe">${u.steps.map(s => `<div class="st ${s.status === "done" ? "done" : ""}" style="--tc: var(--t-${s.trade})"><span class="dot"></span><span>${esc(TRADES[s.trade].label)} · ${esc(crewName(s.crewId))} <span class="pill s-${s.status}">${STATUS[s.status]}</span></span><span class="when">${short(nextBiz(s.start))}${s.days > 1 ? "–" + short(endOf(s)) : ""}</span></div>`).join("")}</div>
+        ${u.notes ? `<div class="sub">${esc(u.notes)}</div>` : ""}
+        ${canWrite ? `<div class="actions"><button data-act="edit-unit" data-unit="${esc(u.id)}">Edit / reschedule</button><button data-act="archive" data-unit="${esc(u.id)}">${u.archived ? "Restore" : "Archive"}</button></div>` : ""}
+      </article>`;
+    }).join("");
+  }
+  function renderCrew() {
+    if (!state.crew.length) {
+      $("crew").innerHTML = `<div class="banner">${state.ready ? "Add your painter, carpet, reglaze and cleaning vendors and your in-house techs. Each one gets a weekly schedule message you can text or email." : "Loading…"}</div>`;
+      return;
+    }
+    const list = [...state.crew].sort((a, b) => ORDER.indexOf(a.trade) - ORDER.indexOf(b.trade));
+    $("crew").innerHTML = list.map(c => {
+      const count = state.units.filter(u => !u.archived).reduce((n, u) => n + u.steps.filter(s => s.crewId === c.id && s.status !== "done").length, 0);
+      return `<article class="card" style="--tc: var(--t-${c.trade})">
+        <div class="head"><span class="uno">${esc(c.name)}</span><span class="pill" style="color: var(--tc)">${esc(TRADES[c.trade]?.label || c.trade)}</span></div>
+        <div class="sub">${c.type === "vendor" ? "Outside vendor" : "In-house"}${c.company ? " · " + esc(c.company) : ""} · ${count} open job${count === 1 ? "" : "s"}</div>
+        <div class="sub">Phone: <span class="contact">${esc(c.phone || "not set")}</span><br>Email: <span class="contact">${esc(c.email || "not set")}</span></div>
+        <div class="actions"><button data-act="message" data-crew="${esc(c.id)}">Week schedule message</button>${canWrite ? `<button data-act="edit-crew" data-crew="${esc(c.id)}">Edit</button>` : ""}</div>
+      </article>`;
+    }).join("");
+  }
+
+  // ---- modals ----
+  const overlay = $("overlay");
+  function openModal(html, cls = "") { overlay.innerHTML = `<div class="modal ${cls}" role="dialog" aria-modal="true">${html}</div>`; overlay.hidden = false; const f = overlay.querySelector("input, select, textarea, button"); f && f.focus(); }
+  function closeModal() { overlay.hidden = true; overlay.innerHTML = ""; }
+  overlay.addEventListener("click", e => { if (e.target === overlay) closeModal(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && !overlay.hidden) closeModal(); });
+  const crewOptions = (trade, sel) => {
+    const fit = state.crew.filter(c => c.trade === trade), other = state.crew.filter(c => c.trade !== trade);
+    return `<option value="">Unassigned</option>` + fit.map(c => `<option value="${esc(c.id)}" ${c.id === sel ? "selected" : ""}>${esc(c.name)}</option>`).join("") +
+      (other.length ? `<optgroup label="Other trades">${other.map(c => `<option value="${esc(c.id)}" ${c.id === sel ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</optgroup>` : "");
+  };
+
+  // Unit editor: pick the work, the board lays out dates in the standard order.
+  function unitEditor(existing) {
+    const t = today();
+    const u = existing ? structuredClone(existing) : { id: uid(), unit: "", building: "", bedrooms: 1, moveOut: t, readyBy: addBiz(t, 7), notes: "", steps: [], archived: false };
+    const has = k => u.steps.some(s => s.trade === k);
+    if (!existing) { for (const k of ["turnover", "paint", "carpet_clean", "inspection"]) u.steps.push(newStep(k, u.bedrooms)); schedule(u.steps, addBiz(u.moveOut, 1)); }
+    function newStep(k, b) { const pref = state.crew.filter(c => c.trade === k); return { trade: k, crewId: pref.length === 1 ? pref[0].id : (pref[0]?.id || ""), days: TRADES[k].days(b), start: "", status: "scheduled", note: "" }; }
+    const carpet = has("carpet_replace") ? "replace" : has("carpet_clean") ? "clean" : "none";
+    openModal(`
+      <h2>${existing ? "Edit turnover · Unit " + esc(u.unit) : "New turnover"}</h2>
+      <div class="grid2">
+        <label class="field"><span>Unit #</span><input id="f-unit" value="${esc(u.unit)}" placeholder="e.g. 204" required></label>
+        <label class="field"><span>Building</span><input id="f-building" value="${esc(u.building)}" placeholder="optional"></label>
+        <label class="field"><span>Bedrooms</span><select id="f-bed">${[0, 1, 2, 3, 4].map(n => `<option value="${n}" ${u.bedrooms === n ? "selected" : ""}>${n === 0 ? "Studio" : n}</option>`).join("")}</select></label>
+        <label class="field"><span>Move-out</span><input type="date" id="f-moveout" value="${esc(u.moveOut)}"></label>
+        <label class="field"><span>Ready by</span><input type="date" id="f-ready" value="${esc(u.readyBy)}"></label>
+      </div>
+      <fieldset><legend>Work needed</legend>
+        <label><input type="checkbox" id="w-turnover" ${has("turnover") ? "checked" : ""}> Turnover / repairs</label>
+        <label><input type="checkbox" id="w-paint" ${has("paint") ? "checked" : ""}> Paint</label>
+        <label><input type="checkbox" id="w-reglaze" ${has("reglaze") ? "checked" : ""}> Tub reglaze</label>
+        <label><input type="checkbox" id="w-inspection" ${has("inspection") ? "checked" : ""}> Final inspection</label>
+      </fieldset>
+      <fieldset><legend>Carpet</legend>
+        <label><input type="radio" name="carpet" value="replace" ${carpet === "replace" ? "checked" : ""}> Replace</label>
+        <label><input type="radio" name="carpet" value="clean" ${carpet === "clean" ? "checked" : ""}> Clean</label>
+        <label><input type="radio" name="carpet" value="none" ${carpet === "none" ? "checked" : ""}> None</label>
+      </fieldset>
+      <div class="foot"><span class="note">Order: turnover → paint → reglaze → carpet → inspection. Weekends skipped. Change a start date and later trades move back to fit.</span><button id="auto">Auto-schedule from move-out</button></div>
+      <div class="tablewrap"><table><thead><tr><th>Trade</th><th>Crew / vendor</th><th>Start</th><th>Days</th><th>Ends</th><th>Status</th></tr></thead><tbody id="steps"></tbody></table></div>
+      <label class="field"><span>Notes</span><textarea id="f-notes" placeholder="Gate code, damage found, keys, etc.">${esc(u.notes)}</textarea></label>
+      <div class="foot"><span id="del-zone">${existing ? `<button class="danger" id="del">Delete turnover</button>` : ""}</span><span class="actions"><button id="cancel">Cancel</button><button class="primary" id="save">Save</button></span></div>`);
+    const body = $("steps");
+    const paint = () => {
+      body.innerHTML = u.steps.map((s, i) => `<tr style="--tc: var(--t-${s.trade})">
+        <td><b style="color: var(--tc)">${TRADES[s.trade].label}</b></td>
+        <td><select data-k="crewId" data-i="${i}" aria-label="Crew for ${TRADES[s.trade].label}">${crewOptions(s.trade, s.crewId)}</select></td>
+        <td><input type="date" data-k="start" data-i="${i}" value="${esc(s.start)}" aria-label="Start date"></td>
+        <td><input type="number" min="1" max="10" data-k="days" data-i="${i}" value="${s.days}" aria-label="Days"></td>
+        <td class="ends">${s.start ? short(endOf(s)) : "—"}</td>
+        <td><select data-k="status" data-i="${i}" aria-label="Status">${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${s.status === k ? "selected" : ""}>${v}</option>`).join("")}</select></td></tr>`).join("") ||
+        `<tr><td colspan="6" class="note">Pick the work needed above.</td></tr>`;
+      const p = projected(u), rb = $("f-ready").value;
+      $("save").textContent = p && rb && p > rb ? `Save (finishes ${short(p)}, after ready-by)` : "Save";
+    };
+    const rebuild = () => {
+      const want = ORDER.filter(k => k.startsWith("carpet") ? document.querySelector(`input[name="carpet"]:checked`).value === k.slice(7) : $("w-" + k).checked);
+      const old = u.steps;
+      u.steps = want.map(k => old.find(s => s.trade === k) || newStep(k, Number($("f-bed").value)));
+      const first = u.steps[0];
+      if (first && !first.start) first.start = addBiz($("f-moveout").value || t, 1);
+      for (let i = 0; i < u.steps.length; i++) if (i) reflow(u.steps, i - 1);
+      paint();
+    };
+    overlay.querySelectorAll('fieldset input').forEach(el => el.addEventListener("change", rebuild));
+    $("f-bed").addEventListener("change", () => { const b = Number($("f-bed").value); u.steps.forEach(s => { if (s.status === "scheduled") s.days = TRADES[s.trade].days(b); }); u.steps.forEach((_, i) => reflow(u.steps, i)); paint(); });
+    $("f-ready").addEventListener("change", paint);
+    $("auto").addEventListener("click", () => { schedule(u.steps, addBiz($("f-moveout").value || t, 1)); paint(); });
+    body.addEventListener("change", e => {
+      const el = e.target, i = Number(el.dataset.i), k = el.dataset.k; if (!k) return;
+      u.steps[i][k] = k === "days" ? Math.max(1, Number(el.value) || 1) : el.value;
+      if (k === "start" && el.value) u.steps[i].start = nextBiz(el.value);
+      if (k === "start" || k === "days") reflow(u.steps, i);
+      paint();
+    });
+    $("cancel").addEventListener("click", closeModal);
+    const del = $("del");
+    if (del) del.addEventListener("click", () => {
+      $("del-zone").innerHTML = `<span class="confirm">Delete Unit ${esc(u.unit)}? <button class="danger" id="del-yes">Delete</button><button id="del-no">Keep</button></span>`;
+      $("del-yes").addEventListener("click", async () => { await remove("units", u.id); closeModal(); toast(`Deleted Unit ${u.unit}`); });
+      $("del-no").addEventListener("click", () => { $("del-zone").innerHTML = ""; });
+    });
+    $("save").addEventListener("click", async () => {
+      u.unit = $("f-unit").value.trim(); u.building = $("f-building").value.trim(); u.bedrooms = Number($("f-bed").value);
+      u.moveOut = $("f-moveout").value; u.readyBy = $("f-ready").value; u.notes = $("f-notes").value.trim();
+      if (!u.unit) { $("f-unit").focus(); toast("Enter a unit number."); return; }
+      if (!u.steps.length) { toast("Pick at least one kind of work."); return; }
+      if (u.steps.some(s => !s.start)) schedule(u.steps, addBiz(u.moveOut || t, 1));
+      u.updated = new Date().toISOString();
+      await put("units", u); closeModal(); toast(`Saved Unit ${u.unit}`);
+    });
+    paint();
+  }
+
+  function stepEditor(unitId, i) {
+    const u = state.units.find(x => x.id === unitId); if (!u) return;
+    const s = u.steps[i];
+    const c = crewById(s.crewId);
+    openModal(`
+      <h2>Unit ${esc(u.unit)} · ${esc(TRADES[s.trade].label)}</h2>
+      <div class="sub">${esc(crewName(s.crewId))}${c && c.phone ? ` · <span class="contact">${esc(c.phone)}</span>` : ""} · ${short(nextBiz(s.start))}${s.days > 1 ? " – " + short(endOf(s)) : ""}</div>
+      <fieldset><legend>Status</legend>${Object.entries(STATUS).map(([k, v]) => `<label><input type="radio" name="st" value="${k}" ${s.status === k ? "checked" : ""} ${canWrite ? "" : "disabled"}> ${v}</label>`).join("")}</fieldset>
+      <label class="field"><span>Note</span><textarea id="s-note" ${canWrite ? "" : "disabled"} placeholder="e.g. Needs second coat, tub chipped, waiting on carpet delivery">${esc(s.note)}</textarea></label>
+      <div class="foot"><button data-act="edit-unit" data-unit="${esc(u.id)}" ${canWrite ? "" : "hidden"}>Reschedule…</button><span class="actions"><button id="cancel">Close</button>${canWrite ? `<button class="primary" id="save">Save</button>` : ""}</span></div>`, "narrow");
+    $("cancel").addEventListener("click", closeModal);
+    const save = $("save");
+    if (save) save.addEventListener("click", async () => {
+      const nu = structuredClone(u);
+      nu.steps[i].status = overlay.querySelector('input[name="st"]:checked').value;
+      nu.steps[i].note = $("s-note").value.trim();
+      nu.updated = new Date().toISOString();
+      await put("units", nu); closeModal(); toast(`Unit ${u.unit}: ${TRADES[s.trade].label} marked ${STATUS[nu.steps[i].status].toLowerCase()}`);
+    });
+  }
+
+  function crewEditor(existing) {
+    const c = existing ? { ...existing } : { id: uid(), name: "", company: "", trade: "paint", type: "vendor", phone: "", email: "" };
+    openModal(`
+      <h2>${existing ? "Edit " + esc(c.name) : "Add crew or vendor"}</h2>
+      <div class="grid2">
+        <label class="field"><span>Name</span><input id="c-name" value="${esc(c.name)}" placeholder="Person or crew name"></label>
+        <label class="field"><span>Company</span><input id="c-company" value="${esc(c.company || "")}" placeholder="optional"></label>
+        <label class="field"><span>Trade</span><select id="c-trade">${ORDER.map(k => `<option value="${k}" ${c.trade === k ? "selected" : ""}>${TRADES[k].label}</option>`).join("")}</select></label>
+        <label class="field"><span>Type</span><select id="c-type"><option value="inhouse" ${c.type === "inhouse" ? "selected" : ""}>In-house</option><option value="vendor" ${c.type === "vendor" ? "selected" : ""}>Outside vendor</option></select></label>
+        <label class="field"><span>Mobile (for texts)</span><input id="c-phone" type="tel" value="${esc(c.phone)}" placeholder="555-123-4567"></label>
+        <label class="field"><span>Email</span><input id="c-email" type="email" value="${esc(c.email)}" placeholder="name@company.com"></label>
+      </div>
+      <div class="foot"><span id="del-zone">${existing ? `<button class="danger" id="del">Remove</button>` : ""}</span><span class="actions"><button id="cancel">Cancel</button><button class="primary" id="save">Save</button></span></div>`, "narrow");
+    $("cancel").addEventListener("click", closeModal);
+    const del = $("del");
+    if (del) del.addEventListener("click", () => {
+      $("del-zone").innerHTML = `<span class="confirm">Remove ${esc(c.name)}? Their jobs become unassigned. <button class="danger" id="del-yes">Remove</button><button id="del-no">Keep</button></span>`;
+      $("del-yes").addEventListener("click", async () => { await remove("crew", c.id); closeModal(); toast(`Removed ${c.name}`); });
+      $("del-no").addEventListener("click", () => { $("del-zone").innerHTML = ""; });
+    });
+    $("save").addEventListener("click", async () => {
+      c.name = $("c-name").value.trim(); c.company = $("c-company").value.trim(); c.trade = $("c-trade").value; c.type = $("c-type").value;
+      c.phone = $("c-phone").value.trim(); c.email = $("c-email").value.trim();
+      if (!c.name) { $("c-name").focus(); toast("Enter a name."); return; }
+      await put("crew", c); closeModal(); toast(`Saved ${c.name}`);
+    });
+  }
+
+  function weekMessage(crewId) {
+    const c = crewById(crewId); if (!c) return;
+    const lines = [];
+    for (let i = 0, d = state.week; i < 5; i++, d = addBiz(d, 1)) {
+      for (const u of state.units) {
+        if (u.archived) continue;
+        u.steps.forEach(s => {
+          if (s.crewId !== crewId || !s.start || s.status === "done") return;
+          if (d >= nextBiz(s.start) && d <= endOf(s)) lines.push(`${short(d)} – Unit ${u.unit}${u.building ? " (" + u.building + ")" : ""}: ${TRADES[s.trade].label}${s.days > 1 ? ` (day ${bizIndex(s.start, d)} of ${s.days})` : ""}`);
+        });
+      }
+    }
+    const first = c.name.split(" ")[0];
+    const text = lines.length
+      ? `Hi ${first}, here is your schedule for the week of ${short(state.week)}:\n${lines.join("\n")}\nHours are 8am–5pm, Mon–Fri. Please reply to confirm, and text me right away if anything holds you up. Thanks!`
+      : `Hi ${first}, nothing is on your schedule for the week of ${short(state.week)} yet. I'll reach out when a unit is ready for you. Thanks!`;
+    const subj = `Make-ready schedule, week of ${short(state.week)}`;
+    openModal(`
+      <h2>Message for ${esc(c.name)}</h2>
+      <div class="sub">Week of ${short(state.week)} · change weeks on the This week tab.</div>
+      <textarea class="msgbox" id="msg" readonly>${esc(text)}</textarea>
+      <div class="sub">Text: <span class="contact">${esc(c.phone || "no mobile on file")}</span><br>Email: <span class="contact">${esc(c.email || "no email on file")}</span></div>
+      <div class="actions">
+        <button class="primary" id="copy">Copy message</button>
+        ${c.phone ? `<a class="btn" href="sms:${esc(c.phone.replace(/[^\d+]/g, ""))}?&body=${encodeURIComponent(text)}" target="_blank" rel="noopener">Open in Messages</a>` : ""}
+        ${c.email ? `<a class="btn" href="mailto:${esc(c.email)}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(text)}" target="_blank" rel="noopener">Open in email</a>` : ""}
+        <button id="cancel">Close</button>
+      </div>
+      <div class="note">The Messages and email buttons may not open from inside this page on every device. Copy always works: paste it into your text or email app.</div>`, "narrow");
+    $("cancel").addEventListener("click", closeModal);
+    $("copy").addEventListener("click", () => {
+      const m = $("msg");
+      navigator.clipboard.writeText(text).then(() => toast("Message copied"), () => { m.focus(); m.select(); toast("Press Ctrl+C / ⌘C to copy"); });
+    });
+  }
+
+  // ---- events ----
+  document.querySelector(".tabs").addEventListener("click", e => { const v = e.target.closest(".tab")?.dataset.view; if (v) { state.view = v; try { localStorage.setItem("mrb-view", v); } catch {} render(); } });
+  $("prev-week").addEventListener("click", () => { const d = parse(state.week); d.setDate(d.getDate() - 7); state.week = fmt(d); render(); });
+  $("next-week").addEventListener("click", () => { const d = parse(state.week); d.setDate(d.getDate() + 7); state.week = fmt(d); render(); });
+  $("this-week").addEventListener("click", () => { state.week = mondayOf(today()); render(); });
+  $("crew-filter").addEventListener("change", e => { state.crewFilter = e.target.value; render(); });
+  $("show-archived").addEventListener("change", e => { state.showArchived = e.target.checked; render(); });
+  $("new-crew").addEventListener("click", () => crewEditor());
+  document.addEventListener("click", async e => {
+    const b = e.target.closest("[data-act]"); if (!b) return;
+    const a = b.dataset.act;
+    if (a === "new-unit") unitEditor();
+    if (a === "edit-unit") { const u = state.units.find(x => x.id === b.dataset.unit); if (u) unitEditor(u); }
+    if (a === "step") stepEditor(b.dataset.unit, Number(b.dataset.i));
+    if (a === "edit-crew") crewEditor(crewById(b.dataset.crew));
+    if (a === "message") weekMessage(b.dataset.crew);
+    if (a === "archive") { const u = state.units.find(x => x.id === b.dataset.unit); if (u) { await put("units", { ...u, archived: !u.archived }); toast(u.archived ? `Restored Unit ${u.unit}` : `Archived Unit ${u.unit}`); } }
+  });
+
+  try { const v = localStorage.getItem("mrb-view"); if (v && ["week", "units", "crew"].includes(v)) state.view = v; } catch {}
+  render();
+  boot();
+})();
+</script>
