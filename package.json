@@ -1,0 +1,11 @@
+{
+  "name": "call-me",
+  "version": "1.0.0",
+  "description": "A tiny web app that calls your own phone number via Twilio",
+  "type": "module",
+  "private": true,
+  "engines": { "node": ">=22.9" },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js"
+  }
+}

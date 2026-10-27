@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Call Me</title>
+  <style>
+    :root {
+      --bg: #f4f5f7; --card: #fff; --text: #1b1d22; --muted: #6b7180;
+      --border: #dfe2e8; --accent: #1f9d55; --accent-hover: #188246; --error: #c62828;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #14161a; --card: #1e2127; --text: #eceef2; --muted: #9aa0ad; --border: #333842; }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 16px;
+      background: var(--bg); color: var(--text);
+      font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    main {
+      width: 100%; max-width: 420px; background: var(--card); border: 1px solid var(--border);
+      border-radius: 16px; padding: 28px 24px;
+    }
+    h1 { margin: 0 0 4px; font-size: 1.5rem; }
+    .sub { margin: 0 0 24px; color: var(--muted); }
+    label { display: block; font-weight: 600; margin: 16px 0 6px; font-size: 0.9rem; }
+    textarea, select, input {
+      width: 100%; padding: 10px 12px; font: inherit; color: inherit; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 10px;
+    }
+    textarea { resize: vertical; min-height: 96px; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .hint { color: var(--muted); font-size: 0.8rem; text-align: right; margin-top: 4px; }
+    button {
+      margin-top: 24px; width: 100%; padding: 14px; font: inherit; font-weight: 700; font-size: 1.1rem;
+      color: #fff; background: var(--accent); border: 0; border-radius: 12px; cursor: pointer;
+    }
+    button:hover:not(:disabled) { background: var(--accent-hover); }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    #status { margin-top: 16px; min-height: 1.5em; text-align: center; font-weight: 500; }
+    #status.error { color: var(--error); }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>📞 Call Me</h1>
+    <p class="sub" id="target">Loading…</p>
+
+    <form id="form">
+      <div id="pw-wrap" class="hidden">
+        <label for="password">App password</label>
+        <input id="password" type="password" autocomplete="current-password" />
+      </div>
+
+      <label for="message">What should the call say?</label>
+      <textarea id="message" maxlength="500" placeholder="Hello! This is your test call. Have a great day."></textarea>
+      <div class="hint"><span id="count">0</span>/500</div>
+
+      <div class="row">
+        <div>
+          <label for="voice">Voice</label>
+          <select id="voice">
+            <option value="alice">Alice</option>
+            <option value="woman">Woman</option>
+            <option value="man">Man</option>
+          </select>
+        </div>
+        <div>
+          <label for="repeat">Repeat</label>
+          <select id="repeat">
+            <option value="1">Once</option>
+            <option value="2">Twice</option>
+            <option value="3">3 times</option>
+          </select>
+        </div>
+      </div>
+
+      <button id="call" type="submit" disabled>Call my phone</button>
+    </form>
+    <div id="status" role="status"></div>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const status = (text, isError = false) => { $("status").textContent = text; $("status").className = isError ? "error" : ""; };
+    const headers = () => ({ "Content-Type": "application/json", "X-App-Password": $("password").value });
+    const LABELS = {
+      queued: "Queued…", initiated: "Dialing…", ringing: "📳 Ringing your phone…", "in-progress": "✅ Call connected",
+      completed: "✅ Call finished", busy: "Line was busy", "no-answer": "No answer", failed: "Call failed", canceled: "Call canceled",
+    };
+    const FINAL = ["completed", "busy", "no-answer", "failed", "canceled"];
+
+    $("message").addEventListener("input", () => { $("count").textContent = $("message").value.length; });
+
+    fetch("/api/config").then((r) => r.json()).then((cfg) => {
+      if (cfg.passwordRequired) $("pw-wrap").classList.remove("hidden");
+      if (!cfg.ready) {
+        $("target").textContent = "Not configured yet.";
+        return status(`Missing settings: ${cfg.missing.join(", ")}. See README.`, true);
+      }
+      $("target").textContent = `Rings ${cfg.to}`;
+      $("call").disabled = false;
+    }).catch(() => status("Can't reach the server.", true));
+
+    async function poll(sid) {
+      for (let i = 0; i < 60; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const res = await fetch(`/api/call/${sid}`, { headers: headers() });
+        const data = await res.json();
+        if (!res.ok) return status(data.error, true);
+        status(LABELS[data.status] || data.status, ["busy", "no-answer", "failed"].includes(data.status));
+        if (FINAL.includes(data.status)) return;
+      }
+    }
+
+    $("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      $("call").disabled = true;
+      status("Placing call…");
+      try {
+        const res = await fetch("/api/call", {
+          method: "POST",
+          headers: headers(),
+          body: JSON.stringify({ message: $("message").value, voice: $("voice").value, repeat: $("repeat").value }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        status(LABELS[data.status] || "Calling…");
+        await poll(data.sid);
+      } catch (err) {
+        status(err.message, true);
+      } finally {
+        $("call").disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
