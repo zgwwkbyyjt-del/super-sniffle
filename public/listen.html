@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Noise Watch</title>
+  <meta name="theme-color" content="#050821" />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <style>
+    :root {
+      --bg: #050821; --glass: rgba(140, 180, 255, 0.07); --line: rgba(140, 200, 255, 0.2);
+      --ink: #eaf2ff; --muted: #8ea2c6; --cyan: #3ff0ff; --violet: #9b5cff; --magenta: #ff4fd8;
+      --ok: #5cffb0; --warn: #ffc857; --bad: #ff6b8a;
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; display: flex; flex-direction: column; align-items: center; gap: 18px;
+      padding: calc(20px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) calc(20px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+      color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(70% 45% at 50% 0%, rgba(90, 80, 255, 0.3), transparent 70%), radial-gradient(55% 45% at 100% 100%, rgba(155, 92, 255, 0.22), transparent 70%), var(--bg);
+    }
+    main { width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: 16px; }
+    h1 { margin: 0; font-size: 1.3rem; letter-spacing: 0.02em; }
+    .sub { margin: 2px 0 0; color: var(--muted); font-size: 0.9rem; }
+
+    .ring {
+      --lvl: 0; position: relative; width: 190px; height: 190px; margin: 6px auto; border-radius: 50%;
+      display: grid; place-items: center; text-align: center;
+      border: 1.5px solid rgba(205, 195, 255, 0.55);
+      background: radial-gradient(circle, rgba(255, 79, 216, calc(0.08 + var(--lvl) * 0.5)), rgba(77, 124, 255, 0.12) 55%, rgba(155, 92, 255, 0.2) 92%, transparent 100%);
+      box-shadow: inset 0 0 22px rgba(170, 140, 255, 0.5), 0 0 calc(30px + var(--lvl) * 60px) rgba(110, 120, 255, 0.55);
+      transition: box-shadow 120ms linear;
+    }
+    .ring.alert { border-color: var(--magenta); box-shadow: inset 0 0 30px rgba(255, 79, 216, 0.7), 0 0 90px rgba(255, 79, 216, 0.6); }
+    .ring strong { display: block; font-size: 2rem; font-variant-numeric: tabular-nums; }
+    .ring span { color: var(--muted); font-size: 0.8rem; }
+
+    .state { text-align: center; font: 600 0.78rem/1.2 ui-monospace, Menlo, monospace; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+    .state.on { color: var(--ok); } .state.warn { color: var(--warn); } .state.bad { color: var(--bad); }
+
+    .card { border: 1px solid var(--line); background: var(--glass); border-radius: 16px; padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+    label { display: flex; justify-content: space-between; gap: 12px; font-size: 0.9rem; color: var(--muted); }
+    label b { color: var(--ink); font-variant-numeric: tabular-nums; }
+    input[type="range"] { width: 100%; accent-color: var(--cyan); }
+    select, input[type="password"] { width: 100%; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--line); background: rgba(0, 0, 0, 0.3); color: inherit; font: inherit; }
+
+    button {
+      width: 100%; padding: 14px; border: 0; border-radius: 14px; font: inherit; font-weight: 700; font-size: 1.05rem; cursor: pointer; color: #04101f;
+      background: linear-gradient(135deg, #2bd9ff, #4d7cff); box-shadow: 0 0 22px rgba(63, 240, 255, 0.35);
+    }
+    button.stop { background: rgba(255, 107, 138, 0.15); color: var(--bad); box-shadow: none; border: 1px solid rgba(255, 107, 138, 0.5); }
+    button.small { width: auto; padding: 8px 14px; font-size: 0.9rem; background: var(--glass); color: var(--ink); border: 1px solid var(--line); box-shadow: none; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+    li { display: flex; justify-content: space-between; gap: 12px; font-size: 0.9rem; }
+    li time { font-variant-numeric: tabular-nums; }
+    li span { color: var(--muted); text-align: right; }
+    .hint { margin: 0; color: var(--muted); font-size: 0.85rem; }
+    .error { color: var(--bad); }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <main>
+    <div>
+      <h1>Noise Watch</h1>
+      <p class="sub">Leave your phone plugged in with this page open. It alerts your computer when the room gets louder than usual.</p>
+    </div>
+
+    <div class="ring" id="ring" aria-live="polite"><div><strong id="db">–</strong><span id="db-label">not listening</span></div></div>
+    <div class="state" id="state">Off</div>
+
+    <button id="toggle" type="button">Start listening</button>
+    <p class="hint error hidden" id="error"></p>
+
+    <div class="card">
+      <label for="sensitivity">Alert when louder than normal by <b id="sens-val">15 dB</b></label>
+      <input id="sensitivity" type="range" min="6" max="30" step="1" value="15" />
+      <label for="cooldown">Wait between alerts</label>
+      <select id="cooldown">
+        <option value="15000">15 seconds</option>
+        <option value="60000" selected>1 minute</option>
+        <option value="300000">5 minutes</option>
+        <option value="900000">15 minutes</option>
+      </select>
+      <div id="pw-wrap" class="hidden">
+        <label for="password">App password</label>
+        <input id="password" type="password" autocomplete="current-password" />
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+        <strong>Alerts</strong>
+        <button class="small" id="test" type="button">Send test alert</button>
+      </div>
+      <ul id="log"><li><span>No alerts yet.</span></li></ul>
+      <p class="hint" id="targets"></p>
+    </div>
+
+    <p class="hint">Only the loudness level leaves your phone with an alert. No audio is recorded or uploaded. Keep the phone charging: the screen stays on while this page listens.</p>
+  </main>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const store = {
+      get(k, d) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
+      set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+    };
+    const headers = () => ({ "Content-Type": "application/json", "X-App-Password": store.get("assistant.password", "") });
+
+    let audio = null, timer = null, wakeLock = null;
+    let baseline = null, level = -100, above = 0, lastAlert = 0;
+    const calib = [];
+
+    $("sensitivity").value = store.get("noise.sens", 15);
+    $("cooldown").value = String(store.get("noise.cooldown", 60000));
+    $("password").value = store.get("assistant.password", "");
+    const showSens = () => { $("sens-val").textContent = $("sensitivity").value + " dB"; };
+    showSens();
+    $("sensitivity").oninput = () => { showSens(); store.set("noise.sens", Number($("sensitivity").value)); };
+    $("cooldown").onchange = () => store.set("noise.cooldown", Number($("cooldown").value));
+    $("password").onchange = () => store.set("assistant.password", $("password").value);
+
+    function setState(text, cls = "") { $("state").textContent = text; $("state").className = "state " + cls; }
+    function showError(text) { $("error").textContent = text; $("error").classList.toggle("hidden", !text); }
+
+    async function keepAwake() {
+      if (!("wakeLock" in navigator)) return false;
+      try { wakeLock = await navigator.wakeLock.request("screen"); return true; } catch { return false; }
+    }
+    document.addEventListener("visibilitychange", async () => {
+      if (!audio) return;
+      if (document.visibilityState === "visible") {
+        await keepAwake();
+        if (audio.ctx.state === "suspended") audio.ctx.resume().catch(() => {});
+        setState(baseline == null ? "Learning the room…" : "Listening", baseline == null ? "warn" : "on");
+      } else {
+        setState("Paused while hidden", "warn");
+      }
+    });
+
+    async function start() {
+      showError("");
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+        const ctx = new AudioContext();
+        const src = ctx.createMediaStreamSource(stream);
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 2048;
+        src.connect(analyser);
+        audio = { ctx, stream, analyser, buf: new Float32Array(analyser.fftSize) };
+      } catch (e) {
+        showError(e.name === "NotAllowedError" ? "Microphone access was blocked. Allow it in Chrome's site settings for this page, then try again." : "Couldn't open the microphone: " + e.message);
+        return;
+      }
+      const awake = await keepAwake();
+      if (!awake) showError("This browser can't keep the screen on. Set the screen timeout to its longest, or turn on “Stay awake while charging”.");
+      baseline = null; calib.length = 0; above = 0;
+      $("toggle").textContent = "Stop listening"; $("toggle").className = "stop";
+      setState("Learning the room…", "warn");
+      timer = setInterval(tick, 100);
+    }
+
+    function stop() {
+      clearInterval(timer); timer = null;
+      if (audio) { audio.stream.getTracks().forEach((t) => t.stop()); audio.ctx.close().catch(() => {}); audio = null; }
+      if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+      $("toggle").textContent = "Start listening"; $("toggle").className = "";
+      $("db").textContent = "–"; $("db-label").textContent = "not listening";
+      $("ring").style.setProperty("--lvl", 0);
+      setState("Off");
+    }
+
+    function tick() {
+      if (!audio) return;
+      audio.analyser.getFloatTimeDomainData(audio.buf);
+      let sum = 0;
+      for (const v of audio.buf) sum += v * v;
+      const db = 20 * Math.log10(Math.sqrt(sum / audio.buf.length) + 1e-9);
+      level = level * 0.6 + db * 0.4;
+      $("db").textContent = Math.round(level);
+      $("ring").style.setProperty("--lvl", Math.max(0, Math.min(1, (level + 70) / 60)).toFixed(2));
+
+      if (baseline == null) {
+        calib.push(level);
+        $("db-label").textContent = "dB · learning";
+        if (calib.length >= 40) {
+          const sorted = [...calib].sort((a, b) => a - b);
+          baseline = sorted[Math.floor(sorted.length / 2)];
+          setState("Listening", "on");
+        }
+        return;
+      }
+      const over = level - baseline;
+      $("db-label").textContent = `dB · normal ${Math.round(baseline)}`;
+      if (over < 3) baseline = baseline * 0.998 + level * 0.002; // follow slow changes in the room
+
+      const threshold = Number($("sensitivity").value);
+      above = over >= threshold ? above + 1 : 0;
+      $("ring").classList.toggle("alert", above > 0);
+      if (above >= 3 && Date.now() - lastAlert >= Number($("cooldown").value)) {
+        lastAlert = Date.now();
+        sendAlert(level, over);
+      }
+    }
+
+    async function sendAlert(lvl, over, test = false) {
+      const at = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit", second: "2-digit" });
+      try {
+        const res = await fetch("/api/noise", { method: "POST", headers: headers(), body: JSON.stringify({ level: lvl, over }) });
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 401) { $("pw-wrap").classList.remove("hidden"); throw new Error("Enter the app password above."); }
+        if (!res.ok) throw new Error(data.error || "Server error " + res.status);
+        const where = data.sent ? Object.entries(data.delivered || {}).map(([k, v]) => `${k} ${v}`).join(", ") || "sent" : data.reason;
+        addLog(at, `${test ? "Test" : `+${Math.round(over)} dB`} · ${where}`);
+      } catch (e) {
+        addLog(at, e.message, true);
+      }
+    }
+
+    function addLog(time, text, bad = false) {
+      const log = $("log");
+      if (log.dataset.empty !== "no") { log.replaceChildren(); log.dataset.empty = "no"; }
+      const li = document.createElement("li");
+      const t = document.createElement("time"); t.textContent = time;
+      const s = document.createElement("span"); s.textContent = text; if (bad) s.className = "error";
+      li.append(t, s);
+      log.prepend(li);
+      while (log.children.length > 20) log.lastChild.remove();
+    }
+
+    $("toggle").onclick = () => (audio ? stop() : start());
+    $("test").onclick = () => sendAlert(level > -100 ? level : -40, 0, true);
+
+    fetch("/api/config").then((r) => r.json()).then((cfg) => { if (cfg.passwordRequired) $("pw-wrap").classList.remove("hidden"); }).catch(() => {});
+    fetch("/api/noise", { headers: headers() }).then((r) => r.json()).then((d) => {
+      if (!d.targets) return;
+      const t = [d.targets.ntfy && "ntfy", d.targets.jarvis && "Jarvis webhook"].filter(Boolean);
+      $("targets").textContent = t.length ? "Alerts go to: " + t.join(" and ") + "." : "No alert destination set yet. Add NTFY_TOPIC on the server (see README).";
+    }).catch(() => {});
+  </script>
+</body>
+</html>

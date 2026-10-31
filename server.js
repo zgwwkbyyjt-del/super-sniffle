@@ -23,6 +23,9 @@ const {
   RAILWAY_VOLUME_MOUNT_PATH,
   // On Railway, keep notes on the attached volume so they survive redeploys.
   NOTES_FILE = RAILWAY_VOLUME_MOUNT_PATH ? `${RAILWAY_VOLUME_MOUNT_PATH}/notes.json` : "data/notes.json",
+  NTFY_TOPIC = "",
+  NTFY_SERVER = "https://ntfy.sh",
+  JARVIS_WEBHOOK_URL = "",
 } = process.env;
 
 const E164 = /^\+[1-9]\d{6,14}$/;
@@ -33,6 +36,7 @@ const STATIC = {
   "/": ["index.html", "text/html; charset=utf-8"],
   "/index.html": ["index.html", "text/html; charset=utf-8"],
   "/assistant": ["assistant.html", "text/html; charset=utf-8"],
+  "/listen": ["listen.html", "text/html; charset=utf-8"],
   "/manifest.webmanifest": ["manifest.webmanifest", "application/manifest+json"],
   "/sw.js": ["sw.js", "text/javascript; charset=utf-8"],
   "/icon.svg": ["icon.svg", "image/svg+xml"],
@@ -172,6 +176,57 @@ const routes = {
       throw err;
     }
   },
+};
+
+// Noise alerts from the /listen page: forwarded to ntfy (desktop/phone notifications) and an optional Jarvis webhook.
+const NOISE_MIN_GAP_MS = 15_000;
+const noiseEvents = [];
+
+async function deliverNoise(event) {
+  const when = new Date(event.at).toLocaleTimeString("en-US", { timeZone: TIME_ZONE, hour: "numeric", minute: "2-digit" });
+  const jobs = {};
+  if (NTFY_TOPIC) {
+    jobs.ntfy = fetch(`${NTFY_SERVER.replace(/\/$/, "")}/${encodeURIComponent(NTFY_TOPIC)}`, {
+      method: "POST",
+      headers: { Title: "Noise detected", Priority: "high", Tags: "loud_sound" },
+      body: `Your phone heard a sound ${event.over} dB above the room's normal level at ${when}.`,
+    });
+  }
+  if (JARVIS_WEBHOOK_URL) {
+    jobs.jarvis = fetch(JARVIS_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "noise", ...event }),
+    });
+  }
+  const results = await Promise.allSettled(Object.values(jobs));
+  return Object.fromEntries(
+    Object.keys(jobs).map((name, i) => {
+      const r = results[i];
+      return [name, r.status === "fulfilled" && r.value.ok ? "sent" : `failed (${r.status === "fulfilled" ? r.value.status : r.reason.message})`];
+    }),
+  );
+}
+
+routes["GET /api/noise"] = async (req) => {
+  if (!passwordOk(req)) throw Object.assign(new Error("Wrong password"), { status: 401 });
+  return { events: noiseEvents.slice(-20).reverse(), targets: { ntfy: Boolean(NTFY_TOPIC), jarvis: Boolean(JARVIS_WEBHOOK_URL) } };
+};
+
+routes["POST /api/noise"] = async (req) => {
+  if (!NTFY_TOPIC && !JARVIS_WEBHOOK_URL) {
+    throw Object.assign(new Error("Missing config: set NTFY_TOPIC (or JARVIS_WEBHOOK_URL)"), { status: 500 });
+  }
+  const body = await readJson(req);
+  const level = Number(body.level), over = Number(body.over);
+  if (!Number.isFinite(level) || !Number.isFinite(over)) throw Object.assign(new Error("level and over must be numbers"), { status: 400 });
+  const last = noiseEvents.at(-1);
+  if (last && Date.now() - last.at < NOISE_MIN_GAP_MS) return { sent: false, reason: "Too soon after the last alert" };
+  const event = { at: Date.now(), level: Math.round(level), over: Math.round(over) };
+  event.delivered = await deliverNoise(event);
+  noiseEvents.push(event);
+  if (noiseEvents.length > 50) noiseEvents.shift();
+  return { sent: true, ...event };
 };
 
 // Endpoints for the Bland phone agent (Norma). See README → "Phone agent".

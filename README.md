@@ -68,6 +68,23 @@ It now opens full-screen like a normal app. The 🔈 button turns read-aloud on 
 3. **Attach a volume** to the service (any mount path, e.g. `/data`). Notes are saved there automatically. Without a volume they are lost on every redeploy.
 4. Under **Settings → Networking**, generate a domain. Open `https://<domain>/assistant` on your phone.
 
+## 🔊 Noise alerts (phone listens, computer gets notified)
+
+Open **`/listen`** on your phone and tap **Start listening**. The page learns the room's normal sound level for a few seconds. When something is clearly louder, it sends an alert. Only the loudness number leaves the phone; no audio is recorded or uploaded.
+
+**Set it up**
+
+1. Pick a long, hard-to-guess topic name, for example `pollo-noise-7f3k9q2m`. Set it as `NTFY_TOPIC` on the server (Railway → Variables) and redeploy.
+2. **On your computer:** open `https://ntfy.sh/<your topic>` in your browser and allow notifications. You can also install the free ntfy desktop or phone app from https://ntfy.sh and subscribe to the topic. Alerts pop up as notifications.
+3. **On your phone:** open `https://<your server>/listen` in Chrome, enter your app password if asked, and tap **Start listening**. Tap **Send test alert** to check that your computer gets it.
+4. Leave the phone **plugged in** with the page open. The page asks Android to keep the screen on. If the screen still turns off, turn on *Settings → Developer options → Stay awake* (while charging).
+
+**Tuning:** *Alert when louder than normal by* sets the sensitivity (lower means more sensitive). *Wait between alerts* stops a noisy room from flooding you. The server also never sends two alerts less than 15 seconds apart.
+
+**Jarvis or other apps:** set `JARVIS_WEBHOOK_URL`, and every alert is also POSTed there as JSON: `{"type":"noise","at":<epoch ms>,"level":<dB>,"over":<dB above normal>}`.
+
+**Limits:** Android pauses web pages when you switch apps or lock the screen, so the page must stay on screen. Only use this to monitor your own space, and respect the privacy of anyone else nearby.
+
 ## 📞 Phone agent (call or text your assistant)
 
 The companion repository `norma-739eb85f` holds a [Bland](https://www.bland.ai) phone agent. You call or text its number, and it answers using your notes and calendar from this server. It uses these endpoints:
@@ -91,6 +108,7 @@ To connect it:
 - `GET /api/config`: shows whether the app is configured, with the target number masked.
 - `POST /api/call`: places the call. Body: `{ "message": "...", "voice": "alice", "repeat": 1 }`.
 - `GET /api/call/:sid`: returns the live call status.
+- `POST /api/noise`: sends a noise alert. Body: `{ "level": -30, "over": 20 }` (dB). `GET /api/noise` lists recent alerts.
 - `POST /api/assistant`: asks the assistant. Body: `{ "messages": [{ "role": "user", "content": "..." }, ...] }` with alternating user/assistant turns, ending on a user turn. Returns `{ "reply": "..." }`.
 
 If `APP_PASSWORD` is set, send it in the `X-App-Password` header.
