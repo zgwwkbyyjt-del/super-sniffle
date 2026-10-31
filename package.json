@@ -4,8 +4,13 @@
   "description": "A tiny web app that calls your own phone number via Twilio",
   "type": "module",
   "private": true,
-  "engines": { "node": ">=22.9" },
+  "engines": {
+    "node": ">=22.9"
+  },
   "scripts": {
     "start": "node --env-file-if-exists=.env server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.3.0"
   }
 }
