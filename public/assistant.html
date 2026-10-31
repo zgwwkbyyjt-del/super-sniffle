@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+  <title>Assistant</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="/icon-192.png" />
+  <meta name="theme-color" content="#f4f5f7" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#14161a" media="(prefers-color-scheme: dark)" />
+  <style>
+    :root {
+      --bg: #f4f5f7; --card: #fff; --text: #1b1d22; --muted: #6b7180;
+      --border: #dfe2e8; --accent: #1f9d55; --accent-hover: #188246; --error: #c62828;
+      --mine: #1f9d55; --mine-text: #fff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #14161a; --card: #1e2127; --text: #eceef2; --muted: #9aa0ad; --border: #333842; }
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0; display: flex; flex-direction: column; height: 100dvh;
+      background: var(--bg); color: var(--text);
+      font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    header {
+      display: flex; align-items: center; gap: 8px;
+      padding: calc(10px + env(safe-area-inset-top)) 16px 10px;
+      background: var(--card); border-bottom: 1px solid var(--border);
+    }
+    header h1 { margin: 0; font-size: 1.15rem; flex: 1; }
+    header small { display: block; color: var(--muted); font-weight: 400; font-size: 0.78rem; }
+    .icon-btn {
+      width: 40px; height: 40px; display: grid; place-items: center; flex: none;
+      font: inherit; font-size: 1.15rem; color: var(--text); background: transparent;
+      border: 1px solid var(--border); border-radius: 50%; cursor: pointer;
+    }
+    .icon-btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+    #install { width: auto; border-radius: 20px; padding: 0 14px; font-size: 0.9rem; font-weight: 600; }
+
+    #log { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+    .msg {
+      max-width: 85%; padding: 10px 14px; border-radius: 18px; white-space: pre-wrap; overflow-wrap: anywhere;
+      background: var(--card); border: 1px solid var(--border); border-bottom-left-radius: 6px;
+    }
+    .msg.user {
+      align-self: flex-end; background: var(--mine); color: var(--mine-text); border-color: var(--mine);
+      border-bottom-left-radius: 18px; border-bottom-right-radius: 6px;
+    }
+    .msg.error { color: var(--error); }
+    .msg a { color: inherit; }
+    .typing span {
+      display: inline-block; width: 7px; height: 7px; margin: 0 2px; border-radius: 50%;
+      background: var(--muted); animation: blink 1.2s infinite both;
+    }
+    .typing span:nth-child(2) { animation-delay: 0.2s; }
+    .typing span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes blink { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+
+    .empty { margin: auto; text-align: center; color: var(--muted); max-width: 300px; }
+    .empty p { margin: 0 0 12px; }
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+    .chip {
+      font: inherit; font-size: 0.9rem; color: var(--text); background: var(--card);
+      border: 1px solid var(--border); border-radius: 16px; padding: 6px 12px; cursor: pointer;
+    }
+
+    form {
+      display: flex; align-items: flex-end; gap: 8px;
+      padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+      background: var(--card); border-top: 1px solid var(--border);
+    }
+    textarea {
+      flex: 1; min-width: 0; max-height: 140px; resize: none; padding: 10px 14px; font: inherit; color: inherit;
+      background: var(--bg); border: 1px solid var(--border); border-radius: 20px;
+    }
+    #send { background: var(--accent); border-color: var(--accent); color: #fff; }
+    #send:disabled { opacity: 0.5; }
+    #mic.listening { background: var(--error); border-color: var(--error); color: #fff; animation: pulse 1.2s infinite; }
+    @keyframes pulse { 50% { transform: scale(1.08); } }
+
+    dialog {
+      width: min(360px, calc(100% - 32px)); padding: 20px; color: var(--text); background: var(--card);
+      border: 1px solid var(--border); border-radius: 16px;
+    }
+    dialog::backdrop { background: rgb(0 0 0 / 0.4); }
+    dialog h2 { margin: 0 0 12px; font-size: 1.1rem; }
+    dialog label { display: flex; align-items: center; gap: 10px; margin: 12px 0; }
+    dialog input[type="password"] {
+      width: 100%; padding: 10px 12px; font: inherit; color: inherit; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 10px;
+    }
+    dialog .row { display: flex; gap: 8px; margin-top: 16px; }
+    dialog button {
+      flex: 1; padding: 10px; font: inherit; font-weight: 600; border-radius: 10px; cursor: pointer;
+      color: var(--text); background: var(--bg); border: 1px solid var(--border);
+    }
+    dialog button.primary { color: #fff; background: var(--accent); border-color: var(--accent); }
+    .muted { color: var(--muted); font-size: 0.85rem; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Assistant <small id="sub">Connecting…</small></h1>
+    <button id="install" class="icon-btn hidden" type="button">Install</button>
+    <button id="speak" class="icon-btn" type="button" aria-pressed="false" aria-label="Read replies aloud" title="Read replies aloud">🔈</button>
+    <button id="open-settings" class="icon-btn" type="button" aria-label="Settings" title="Settings">⚙︎</button>
+  </header>
+
+  <main id="log" aria-live="polite"></main>
+
+  <form id="form">
+    <button id="mic" class="icon-btn" type="button" aria-label="Speak" title="Speak">🎤</button>
+    <textarea id="input" rows="1" placeholder="Ask me anything…" enterkeyhint="send" autocomplete="off"></textarea>
+    <button id="send" class="icon-btn" type="submit" aria-label="Send" title="Send" disabled>➤</button>
+  </form>
+
+  <dialog id="settings">
+    <h2>Settings</h2>
+    <div id="pw-wrap" class="hidden">
+      <label for="password" style="display:block;margin:0 0 6px">App password</label>
+      <input id="password" type="password" autocomplete="current-password" />
+    </div>
+    <label><input id="speak-toggle" type="checkbox" /> Read replies aloud</label>
+    <p class="muted" id="about"></p>
+    <div class="row">
+      <button id="clear" type="button">Clear chat</button>
+      <button id="close-settings" class="primary" type="button">Done</button>
+    </div>
+  </dialog>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const store = {
+      get(key, fallback) { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } },
+      set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} },
+    };
+    const MAX_TURNS = 40;
+    const SUGGESTIONS = ["What's on my calendar today?", "Remember that I parked on level 3", "What did I ask you to remember?"];
+
+    let turns = store.get("assistant.turns", []);
+    let speakReplies = store.get("assistant.speak", false);
+    let busy = false;
+    let lastInputWasVoice = false;
+
+    // ---------- Rendering ----------
+    const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+    const format = (text) => escapeHtml(text)
+      .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
+      .replace(/(https?:\/\/[^\s<)]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+
+    function bubble(role, text, extra = "") {
+      const el = document.createElement("div");
+      el.className = `msg ${role} ${extra}`.trim();
+      el.innerHTML = format(text);
+      $("log").append(el);
+      el.scrollIntoView({ block: "end" });
+      return el;
+    }
+
+    function render() {
+      $("log").replaceChildren();
+      if (!turns.length) {
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.innerHTML = "<p>Ask a question, or tap the mic and talk. I can check your calendar, remember things, search the web, and ring your phone.</p>";
+        const chips = document.createElement("div");
+        chips.className = "chips";
+        for (const s of SUGGESTIONS) {
+          const chip = document.createElement("button");
+          chip.className = "chip";
+          chip.type = "button";
+          chip.textContent = s;
+          chip.onclick = () => ask(s);
+          chips.append(chip);
+        }
+        empty.append(chips);
+        $("log").append(empty);
+      }
+      for (const t of turns) bubble(t.role, t.content);
+    }
+
+    // ---------- Talking to the server ----------
+    async function ask(text) {
+      text = text.trim();
+      if (!text || busy) return;
+      busy = true;
+      updateSend();
+      speechSynthesis.cancel();
+      if (!turns.length) $("log").replaceChildren();
+      turns.push({ role: "user", content: text });
+      bubble("user", text);
+      const typing = bubble("assistant", "", "typing");
+      typing.innerHTML = "<span></span><span></span><span></span>";
+      const voice = lastInputWasVoice;
+      lastInputWasVoice = false;
+
+      try {
+        // Send the most recent turns, starting on a user turn.
+        let recent = turns.slice(-MAX_TURNS);
+        if (recent[0].role !== "user") recent = recent.slice(1);
+        const res = await fetch("/api/assistant", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-App-Password": store.get("assistant.password", "") },
+          body: JSON.stringify({ messages: recent }),
+        });
+        const data = await res.json().catch(() => ({ error: `Server error ${res.status}` }));
+        if (!res.ok) throw new Error(res.status === 401 ? "Wrong app password. Set it in ⚙︎ Settings." : data.error);
+        typing.remove();
+        turns.push({ role: "assistant", content: data.reply });
+        store.set("assistant.turns", turns.slice(-200));
+        bubble("assistant", data.reply);
+        if (speakReplies || voice) say(data.reply);
+      } catch (err) {
+        typing.remove();
+        turns.pop();
+        bubble("assistant", err.message || "Can't reach the server.", "error");
+        if (!$("input").value) $("input").value = text;
+      } finally {
+        busy = false;
+        updateSend();
+      }
+    }
+
+    // ---------- Voice ----------
+    function say(text) {
+      if (!("speechSynthesis" in window)) return;
+      const clean = text.replace(/\*\*/g, "").replace(/https?:\/\/\S+/g, "link");
+      speechSynthesis.speak(Object.assign(new SpeechSynthesisUtterance(clean), { lang: navigator.language }));
+    }
+
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognizer = null;
+    if (!Recognition) $("mic").classList.add("hidden");
+    $("mic").onclick = () => {
+      if (recognizer) return recognizer.stop();
+      speechSynthesis.cancel();
+      recognizer = new Recognition();
+      recognizer.lang = navigator.language;
+      recognizer.interimResults = true;
+      $("mic").classList.add("listening");
+      recognizer.onresult = (e) => {
+        const text = [...e.results].map((r) => r[0].transcript).join("");
+        $("input").value = text;
+        grow();
+        if (e.results[e.results.length - 1].isFinal) {
+          lastInputWasVoice = true;
+          $("input").value = "";
+          grow();
+          ask(text);
+        }
+      };
+      recognizer.onerror = (e) => {
+        if (e.error === "not-allowed") bubble("assistant", "Microphone access is blocked. Allow it in your browser's site settings.", "error");
+      };
+      recognizer.onend = () => { recognizer = null; $("mic").classList.remove("listening"); };
+      recognizer.start();
+    };
+
+    // ---------- Composer ----------
+    const grow = () => { const t = $("input"); t.style.height = "auto"; t.style.height = `${t.scrollHeight}px`; updateSend(); };
+    const updateSend = () => { $("send").disabled = busy || !$("input").value.trim(); };
+    $("input").addEventListener("input", grow);
+    $("input").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey && !matchMedia("(pointer: coarse)").matches) { e.preventDefault(); $("form").requestSubmit(); }
+    });
+    $("form").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const text = $("input").value;
+      $("input").value = "";
+      grow();
+      ask(text);
+    });
+
+    // ---------- Settings ----------
+    const setSpeak = (on) => {
+      speakReplies = on;
+      store.set("assistant.speak", on);
+      $("speak").setAttribute("aria-pressed", String(on));
+      $("speak").textContent = on ? "🔊" : "🔈";
+      $("speak-toggle").checked = on;
+      if (!on) speechSynthesis.cancel();
+    };
+    $("speak").onclick = () => setSpeak(!speakReplies);
+    $("speak-toggle").onchange = (e) => setSpeak(e.target.checked);
+    $("open-settings").onclick = () => { $("password").value = store.get("assistant.password", ""); $("settings").showModal(); };
+    $("close-settings").onclick = () => { store.set("assistant.password", $("password").value); $("settings").close(); };
+    $("clear").onclick = () => { turns = []; store.set("assistant.turns", []); render(); $("settings").close(); };
+
+    // ---------- Install as an app ----------
+    let installPrompt = null;
+    addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); installPrompt = e; $("install").classList.remove("hidden"); });
+    $("install").onclick = async () => { installPrompt?.prompt(); await installPrompt?.userChoice; installPrompt = null; $("install").classList.add("hidden"); };
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+
+    // ---------- Start ----------
+    setSpeak(speakReplies);
+    render();
+    fetch("/api/config").then((r) => r.json()).then((cfg) => {
+      if (cfg.passwordRequired) $("pw-wrap").classList.remove("hidden");
+      const a = cfg.assistant || {};
+      $("sub").textContent = a.ready ? (a.calendar ? "Calendar connected" : "No calendar connected") : "Not configured";
+      $("about").textContent = `Time zone: ${a.timeZone}. ${a.calendar ? "Calendar connected." : "Add CALENDAR_ICS_URL to connect a calendar."} ${cfg.ready ? `Calls ring ${cfg.to}.` : "Phone calls aren't set up."}`;
+      if (!a.ready) bubble("assistant", "The assistant isn't set up yet: add ANTHROPIC_API_KEY to the server's .env file. See the README.", "error");
+      if (cfg.passwordRequired && !store.get("assistant.password", "")) $("open-settings").click();
+    }).catch(() => { $("sub").textContent = "Offline"; });
+  </script>
+</body>
+</html>

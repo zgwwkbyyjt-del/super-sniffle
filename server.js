@@ -1,9 +1,12 @@
-// Call Me — a tiny web app that rings your own phone via Twilio.
-// Zero dependencies: uses Node's built-in http server and fetch.
+// Call Me — a tiny web app that rings your own phone via Twilio,
+// plus a personal assistant (Claude) you can install on your phone at /assistant.
+// Uses Node's built-in http server and fetch; the only dependency is the Anthropic SDK.
 
 import http from "node:http";
 import { readFile } from "node:fs/promises";
 import { timingSafeEqual } from "node:crypto";
+import { createAssistant, Anthropic } from "./assistant.js";
+import { createCalendar, createNotes } from "./personal.js";
 
 const {
   TWILIO_ACCOUNT_SID,
@@ -13,11 +16,37 @@ const {
   APP_PASSWORD = "",
   PORT = "3000",
   TWILIO_API_BASE = "https://api.twilio.com",
+  ANTHROPIC_API_KEY,
+  CALENDAR_ICS_URL = "",
+  TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone,
+  AGENT_TOKEN = "",
+  NOTES_FILE = "data/notes.json",
 } = process.env;
 
 const E164 = /^\+[1-9]\d{6,14}$/;
 const MAX_MESSAGE_LENGTH = 500;
 const VOICES = ["alice", "man", "woman"];
+
+const STATIC = {
+  "/": ["index.html", "text/html; charset=utf-8"],
+  "/index.html": ["index.html", "text/html; charset=utf-8"],
+  "/assistant": ["assistant.html", "text/html; charset=utf-8"],
+  "/manifest.webmanifest": ["manifest.webmanifest", "application/manifest+json"],
+  "/sw.js": ["sw.js", "text/javascript; charset=utf-8"],
+  "/icon.svg": ["icon.svg", "image/svg+xml"],
+  "/icon-192.png": ["icon-192.png", "image/png"],
+  "/icon-512.png": ["icon-512.png", "image/png"],
+};
+
+const notes = createNotes(new URL(NOTES_FILE, new URL(".", import.meta.url)));
+const calendar = createCalendar(CALENDAR_ICS_URL, TIME_ZONE);
+const assistant = createAssistant({
+  notes,
+  calendar,
+  placeCall: (opts) => placeCall(opts),
+  canCall: () => missingConfig().length === 0,
+  timeZone: TIME_ZONE,
+});
 
 function missingConfig() {
   return ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER", "MY_PHONE_NUMBER"].filter(
@@ -31,6 +60,17 @@ function maskNumber(number) {
 
 function escapeXml(text) {
   return text.replace(/[<>&'"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" })[c]);
+}
+
+const digits = (number) => String(number || "").replace(/\D/g, "");
+
+// Requests from the Bland phone agent: a shared bearer token, and the caller must be you.
+function agentOk(req) {
+  if (!AGENT_TOKEN) return false;
+  const given = Buffer.from(req.headers.authorization || "");
+  const expected = Buffer.from(`Bearer ${AGENT_TOKEN}`);
+  if (given.length !== expected.length || !timingSafeEqual(given, expected)) return false;
+  return !MY_PHONE_NUMBER || digits(req.headers["x-caller"]) === digits(MY_PHONE_NUMBER);
 }
 
 function passwordOk(req) {
@@ -63,12 +103,12 @@ async function placeCall({ message, voice, repeat }) {
   return { sid: call.sid, status: call.status };
 }
 
-function readJson(req) {
+function readJson(req, limit = 10_000) {
   return new Promise((resolve, reject) => {
     let body = "";
     req.on("data", (chunk) => {
       body += chunk;
-      if (body.length > 10_000) reject(Object.assign(new Error("Body too large"), { status: 413 }));
+      if (body.length > limit) reject(Object.assign(new Error("Body too large"), { status: 413 }));
     });
     req.on("end", () => {
       try {
@@ -93,6 +133,7 @@ const routes = {
       missing,
       to: maskNumber(MY_PHONE_NUMBER),
       passwordRequired: Boolean(APP_PASSWORD),
+      assistant: { ready: Boolean(ANTHROPIC_API_KEY), calendar: calendar.configured, timeZone: TIME_ZONE },
     };
   },
 
@@ -113,16 +154,46 @@ const routes = {
 
     return placeCall({ message, voice, repeat });
   },
+
+  "POST /api/assistant": async (req) => {
+    if (!ANTHROPIC_API_KEY) throw Object.assign(new Error("Missing config: ANTHROPIC_API_KEY"), { status: 500 });
+    const { messages } = await readJson(req, 400_000);
+    if (!assistant.validTurns(messages)) {
+      throw Object.assign(new Error("Send messages as alternating user/assistant turns, ending with the user"), { status: 400 });
+    }
+    try {
+      return { reply: await assistant.reply(messages) };
+    } catch (err) {
+      if (err instanceof Anthropic.AuthenticationError) throw Object.assign(new Error("Anthropic API key was rejected"), { status: 500 });
+      if (err instanceof Anthropic.RateLimitError) throw Object.assign(new Error("The assistant is busy. Try again in a moment."), { status: 429 });
+      if (err instanceof Anthropic.APIError) throw Object.assign(new Error(`Assistant error: ${err.message}`), { status: 502 });
+      throw err;
+    }
+  },
+};
+
+// Endpoints for the Bland phone agent (Norma). See README → "Phone agent".
+const agentRoutes = {
+  "GET /api/agent/calendar": async (req, url) => ({ events: await calendar.upcoming(url.searchParams.get("days") || 7) }),
+  "POST /api/agent/notes/search": async (req) => ({ notes: await notes.search((await readJson(req)).query || "", 10) }),
+  "POST /api/agent/notes": async (req) => ({ saved: await notes.add((await readJson(req)).text) }),
 };
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://localhost");
 
   try {
-    if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/index.html")) {
-      const html = await readFile(new URL("./public/index.html", import.meta.url));
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      return res.end(html);
+    const file = req.method === "GET" && STATIC[url.pathname];
+    if (file) {
+      const body = await readFile(new URL(`./public/${file[0]}`, import.meta.url));
+      res.writeHead(200, { "Content-Type": file[1] });
+      return res.end(body);
+    }
+
+    const agentHandler = agentRoutes[`${req.method} ${url.pathname}`];
+    if (agentHandler) {
+      if (!agentOk(req)) return send(res, 403, { error: "Not allowed" });
+      return send(res, 200, await agentHandler(req, url));
     }
 
     const callStatus = url.pathname.match(/^\/api\/call\/(CA[0-9a-f]{32})$/i);
@@ -144,6 +215,6 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(Number(PORT), () => {
   const missing = missingConfig();
-  console.log(`Call Me running at http://localhost:${PORT}`);
+  console.log(`Call Me running at http://localhost:${PORT} (assistant: http://localhost:${PORT}/assistant)`);
   if (missing.length) console.warn(`⚠  Missing config: ${missing.join(", ")} — copy .env.example to .env and fill it in.`);
 });
