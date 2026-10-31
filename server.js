@@ -20,7 +20,9 @@ const {
   CALENDAR_ICS_URL = "",
   TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone,
   AGENT_TOKEN = "",
-  NOTES_FILE = "data/notes.json",
+  RAILWAY_VOLUME_MOUNT_PATH,
+  // On Railway, keep notes on the attached volume so they survive redeploys.
+  NOTES_FILE = RAILWAY_VOLUME_MOUNT_PATH ? `${RAILWAY_VOLUME_MOUNT_PATH}/notes.json` : "data/notes.json",
 } = process.env;
 
 const E164 = /^\+[1-9]\d{6,14}$/;

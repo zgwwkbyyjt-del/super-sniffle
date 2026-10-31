@@ -54,10 +54,19 @@ It runs on Claude (`claude-opus-5-5`) and can:
 3. **Set `APP_PASSWORD`.** The assistant can read your notes and calendar, so protect it before putting it online.
 4. Put the app on an **HTTPS** address your phone can reach. Android only installs apps and allows the microphone over HTTPS. Two options:
    - **Quick test:** run `npm start`, then in another terminal run `npx cloudflared tunnel --url http://localhost:3000`. It prints an `https://….trycloudflare.com` address.
-   - **Always on:** deploy to any Node host (Render, Railway, Fly.io, a VPS) with the same environment variables. Use a persistent disk if you want notes to survive restarts.
+   - **Always on:** deploy to [Railway](#deploy-to-railway) (config included), or any Node host with the same environment variables and a persistent disk for notes.
 5. On your Android phone, open `https://<your address>/assistant` in **Chrome**. Tap **Install** in the header, or use *⋮ → Add to Home screen / Install app*. Enter your app password under ⚙︎.
 
 It now opens full-screen like a normal app. The 🔈 button turns read-aloud on for every reply. Replies to spoken questions are always read aloud.
+
+### Deploy to Railway
+
+`railway.json` holds the deploy settings: it starts with `npm start`, uses `/api/config` as the health check, and restarts on failure.
+
+1. On [railway.com](https://railway.com), choose **New Project → Deploy from GitHub repo** and pick this repository.
+2. In the service's **Variables** tab, add `ANTHROPIC_API_KEY`, `APP_PASSWORD` and `TIME_ZONE`. Add the optional ones you use: `CALENDAR_ICS_URL`, `MY_PHONE_NUMBER`, the `TWILIO_*` settings and `AGENT_TOKEN`. Railway sets `PORT` itself.
+3. **Attach a volume** to the service (any mount path, e.g. `/data`). Notes are saved there automatically. Without a volume they are lost on every redeploy.
+4. Under **Settings → Networking**, generate a domain. Open `https://<domain>/assistant` on your phone.
 
 ## 📞 Phone agent (call or text your assistant)
 
